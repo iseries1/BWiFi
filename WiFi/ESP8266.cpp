@@ -8,7 +8,7 @@
   {
     Head = 0;
     Tail = 0;
-    Ok = 0;
+    Ok = false;
     Error = 0;
     Mode = 0;
     memset(Access, 0, sizeof(Access));
@@ -28,6 +28,7 @@
     memset(AIp, 0, sizeof(AIp));
     memset(SIp, 0, sizeof(SIp));
     Transparent = false;
+    Connected = 0;
   }
 
   void ESP8266::doCmd(char *cmd)
@@ -49,18 +50,18 @@
       doCmd("AT");
       if (getOk())
       {
-        doCmd("AT+CWMODE_CUR?");
-        doCmd("AT+CWJAP_CUR?");
-        doCmd("AT+CWSAP_CUR?");
-        doCmd("AT+CWDHCP_CUR?");
-        doCmd("AT+CIPSTAMAC_CUR?");
-        // doCmd("AT+CIPSTA_CUR?");
-        // doCmd("AT+CIPAP_CUR?");
-        doCmd("AT+CIPSTATUS");
-        doCmd("AT+CIPMUX?");
-        doCmd("AT+CIPMODE?");
-        doCmd("AT+CIPSTO?");
-        doCmd("AT+CIFSR");
+        doCmd("AT+CWMODE_CUR?");  //WiFi operation mode (Station/SoftAP/both)
+        doCmd("AT+CWJAP_CUR?"); //Get connected Access Point
+        doCmd("AT+CWSAP_CUR?"); //Get Access Point configuration for board (server)
+        doCmd("AT+CWDHCP_CUR?"); //Get DHCP setting Soft enabled/disabled/ station enabled/disabled
+        doCmd("AT+CIPSTAMAC_CUR?"); //Get Station Mac address
+        // doCmd("AT+CIPSTA_CUR?");  //Get Ip address of station
+        // doCmd("AT+CIPAP_CUR?");  //Get Ip address of softAp
+        doCmd("AT+CIPSTATUS");  //Get network connection status
+        doCmd("AT+CIPMUX?");  //Get single or multipoint configuration
+        doCmd("AT+CIPMODE?");  //Get Transfer mode normal or passthrough
+        doCmd("AT+CIPSTO?");  //Get TCP Server timeout
+        doCmd("AT+CIFSR");  //Get Local IP address SoftAP and Station
       }
     }
   }
@@ -70,14 +71,15 @@
     int i;
 
     i = Head;
+    Buffer[Tail] = 0;
     while (i < Tail)
     {
       if (Buffer[i] > 16)
       {
         if (memcmp(&Buffer[i], "OK", 2) == 0)
         {
-            i += 1;
-            Ok = 1;
+          i += 1;
+          Ok = true;
         }
         
         if (memcmp(&Buffer[i], "ERROR", 5) == 0)
@@ -88,7 +90,27 @@
         
         if (memcmp(&Buffer[i], "STATUS:", 7) == 0)
         {
-            Status = Buffer[i+7] - '0';
+          Status = Buffer[i+7] - '0';
+        }
+
+        if (memcmp(&Buffer[i], "WIFI C", 6) == 0)
+        {
+          Connected = 2;
+        }
+
+        if (memcmp(&Buffer[i], "WIFI D", 6) == 0)
+        {
+          Connected = 0;
+        }
+
+        if (memcmp(&Buffer[i], "WIFI G", 6) == 0)
+        {
+          Connected = 1;
+        }
+        
+        if (memcmp(&Buffer[i], "busy ", 5) == 0)
+        {
+          Ok = 0;
         }
         
         if (Buffer[i] == '+')
@@ -114,9 +136,9 @@
 
   bool ESP8266::getOk()
   {
-    if (Ok == 1)
+    if (Ok)
     {
-      Ok = 0;
+      Ok = false;
       return true;
     }
     else
@@ -193,10 +215,57 @@
     return SIp;
   }
 
-  bool ESP8266::doTransparent()
+  bool ESP8266::getTransparent()
   {
+    return Transparent;
+  }
+  
+  bool ESP8266::doTransparent(char *P)
+  {
+    if (Connected != 1)
+      return false;
+
+    strcpy(Buffer, "AT+CIPSTART=\"UDP\",\"255.255.255.255\",");
+    strcat(Buffer, P);
+    strcat(Buffer, ",");
+    strcat(Buffer, P);
+    strcat(Buffer, ",0"); 
+    doCmd(Buffer);
     doCmd("AT+CIPSEND");
     return Transparent;
+  }
+
+  void ESP8266::doConnect(char *Ss, char *Pw)
+  {
+    doCmd("AT+CWMODE_CUR=1");
+    strcpy(Buffer, "AT+CWJAP_CUR=\"");
+    strcat(Buffer, Ss);
+    strcat(Buffer, "\",\"");
+    strcat(Buffer, Pw);
+    strcat(Buffer, "\"");
+    doCmd(Buffer);
+    Connected = 0;
+  }
+
+  int ESP8266::isConnected()
+  {
+    if (Connected < 0)
+      return Connected;
+
+    getOk();  //Avoid being busy...
+    if (Serial1.available() > 0)
+    {
+      Tail = Serial1.readBytes(Buffer, 128);
+      parse();
+
+      if ((Connected == 1) && (getOk()))
+      {
+        doCmd("AT+CIPMODE=1");
+        return Connected;
+      }
+    }
+    
+    return 0;
   }
   
   int ESP8266::doParm(int p)
@@ -211,6 +280,12 @@
     {
       Mode = current[11] - '0';
       return 11;
+    }
+
+    if (memcmp(current, "CWJAP:", 6) == 0)
+    {
+      Connected = -1;
+      return 6;
     }
     
     if (memcmp(current, "CWJAP_CUR:", 10) == 0)

@@ -24,14 +24,17 @@ class ESP8266 {
     void getMac(char *);
     char *getAccessIP();
     char *getStationIP();
-    bool doTransparent();
+    bool getTransparent();
+    bool doTransparent(char *);
+    void doConnect(char *, char *);
+    int isConnected();
 
   private:
     int doParm(int);
     char Buffer[256];
     int Head;
     int Tail;
-    int Ok;
+    bool Ok;
     int Error;
     int Mode;
     char Access[32];
@@ -51,6 +54,7 @@ class ESP8266 {
     char AIp[16];
     char SIp[16];
     bool Transparent;
+    int Connected;
 };
 
 #endif

@@ -8,12 +8,17 @@
 
 
 ESP8266 ESP;
+int tm;
+bool once;
 
 void setup() {
+  int i;
+  
   delay(5000);
   
   Serial.begin(115200);
   Serial1.begin(115200);
+  Serial1.setTimeout(250);
   
   ESP.begin();
   Serial.print("SSID: ");Serial.println(ESP.getSsid());
@@ -24,10 +29,37 @@ void setup() {
   Serial.print("AccessIP: ");Serial.println(ESP.getAccessIP());
   Serial.print("StationIP: ");Serial.println(ESP.getStationIP());
   Serial.print("Ready> ");
+
+  // Connect to network and enter transparent connection mode
+  ESP.doConnect("Your SSID", "Your Password");
+  i = 0;
+  tm = millis();
+  while (i == 0)
+  {
+    i = ESP.isConnected();
+    if (i == -1)
+    {
+      Serial.println("Failed");
+    }
+    if (i == 1)
+    {
+      if (ESP.doTransparent("9750"))
+      {
+        tm = millis() - tm;
+        Serial.print("Entered Transparent Mode: ");Serial.println(tm);
+      }
+      else
+        Serial.println("Failed");
+    }
+    if (millis()-tm > 20000)
+    {
+      Serial.println("Timed Out");
+      once = true;
+    }
+  }
 }
 
 void loop() {
-
   char c;
   
   while (Serial.available() > 0)
